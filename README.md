@@ -44,18 +44,54 @@ They do not read `.env`, call the public FHIR server, or connect to PostgreSQL.
 No additional test dependencies are required.
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs on pull requests
-and pushes to `main`. It installs dependencies, runs the unit tests on Python
-3.13, then builds the Docker image without starting the ETL or publishing it.
+and pushes to `main`. It installs dependencies, runs unit and database/API
+integration tests on Python 3.13, then builds the Docker image without running
+the public FHIR extraction or publishing the image. A temporary PostgreSQL 18
+service is created for each CI job. The existing `Tests and Docker build`
+required check covers all these steps.
 With Docker running, the same build can be checked locally:
 
 ```text
 docker build --tag fhir-etl:ci .
 ```
 
-Database/API integration tests, deployment, and branch protection are not yet
-configured. To block merging on CI failures, add `Tests and Docker build` as a
-required status check in the repository's branch protection or ruleset after
-the first workflow run.
+### Database and API integration tests
+
+The integration tests transform synthetic FHIR resources, compute analysis
+results, store them in PostgreSQL, and query a real local HTTP API. They check
+patient/observation filtering, statistics and anomaly joins, repeated loads
+without duplicate rows, input validation, and `/health` returning `503` when
+its database connection fails. They use the existing dependencies only.
+
+Start a disposable database, separate from the application Compose services:
+
+```text
+docker run --detach --rm --name fhir-ci-postgres --publish 127.0.0.1:55432:5432 --env POSTGRES_DB=fhir_ci_test --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=ci-test-only postgres:18-alpine
+docker exec fhir-ci-postgres pg_isready -U postgres -d fhir_ci_test
+```
+
+Wait until `pg_isready` reports `accepting connections`, then in PowerShell:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql://postgres:ci-test-only@127.0.0.1:55432/fhir_ci_test"
+python -m unittest discover -s tests/integration -v
+```
+
+The database name must be `fhir_ci_test`; missing configuration fails the test
+run rather than skipping it. Tests ignore `.env`, use a unique schema that is
+removed afterward, and bind the test API to a free loopback port. The unit-test
+command above runs only unit tests; integration tests require the separate
+command. Do not add `__init__.py` to `tests/integration`, which would include
+these database-dependent tests in unit-test discovery.
+
+Stop and remove the disposable database when finished:
+
+```text
+docker stop fhir-ci-postgres
+```
+
+No application database volumes are mounted by these commands. Deployment is
+not configured. Branch protection is managed in GitHub repository settings.
 
 ## Cohort and resource
 
