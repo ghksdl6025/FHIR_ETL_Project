@@ -46,9 +46,10 @@ No additional test dependencies are required.
 The GitHub Actions workflow in `.github/workflows/ci.yml` runs on pull requests
 and pushes to `main`. It installs dependencies, runs unit and database/API
 integration tests on Python 3.13, then builds the Docker image without running
-the public FHIR extraction or publishing the image. A temporary PostgreSQL 18
-service is created for each CI job. The existing `Tests and Docker build`
-required check covers all these steps.
+the public FHIR extraction. A temporary PostgreSQL 18 service is created for
+each test job. The existing `Tests and Docker build` required check covers
+these steps. Pull requests do not publish images; successful `main` pushes
+also publish the built image to GHCR as described below.
 With Docker running, the same build can be checked locally:
 
 ```text
@@ -92,6 +93,45 @@ docker stop fhir-ci-postgres
 
 No application database volumes are mounted by these commands. Deployment is
 not configured. Branch protection is managed in GitHub repository settings.
+
+### Publishing images to GHCR
+
+On a push to `main`, successful tests and the Docker build are followed by a
+separate `Publish image to GHCR` job. It loads the image from that same run's
+artifact rather than rebuilding it, authenticates with `GITHUB_TOKEN`, and
+pushes a tag containing the full commit SHA:
+
+```text
+ghcr.io/ghksdl6025/fhir_etl_project:<full-commit-sha>
+```
+
+Only the publish job has `packages: write` permission. Pull requests skip the
+image artifact upload and publish job. No personal access token or new secret
+is needed for this workflow. Source and revision labels link the image to its
+GitHub repository and commit. The temporary image artifact is retained for one
+day; this does not delete the separately published GHCR image.
+
+After merging this workflow, check both jobs on the `main` run. The publish
+job's summary shows the complete image reference; the package should appear
+under the repository's **Packages** section. A new GHCR package is private by
+default, so the first publish does not make it publicly downloadable. If a
+package with this name already exists and publishing is denied, grant this
+repository write access under the package's **Manage Actions access** settings.
+See [GitHub's Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+To retrieve a version later (authenticate first if the package is private):
+
+```text
+docker pull ghcr.io/ghksdl6025/fhir_etl_project:<full-commit-sha>
+```
+
+Use the SHA tag for version selection; this workflow does not create a mutable
+`latest` tag. SHA tags identify the source commit, but rerunning the same commit
+can replace that tag because base images and transitive dependencies may change.
+Use the image digest printed by `docker push` when an exact image is required.
+Publishing stores the image only; server deployment and rollback are not yet
+configured. The image's default command runs ETL, so API deployment also needs
+the API command and database configuration shown in `docker-compose.yml`.
 
 ## Cohort and resource
 
