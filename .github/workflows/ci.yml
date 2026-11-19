@@ -42,4 +42,47 @@ jobs:
           TEST_DATABASE_URL: postgresql://postgres:ci-test-only@127.0.0.1:5432/fhir_ci_test
         run: python -m unittest discover -s tests/integration -v
       - name: Build Docker image
-        run: docker build --tag fhir-etl:ci .
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag fhir-etl:ci .
+      - name: Save image for publishing
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save --output "$RUNNER_TEMP/fhir-etl.tar" fhir-etl:ci
+      - name: Upload image artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: fhir-etl-image
+          path: ${{ runner.temp }}/fhir-etl.tar
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-image:
+    name: Publish image to GHCR
+    needs: test-and-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: fhir-etl-image
+          path: ${{ runner.temp }}/fhir-etl-image
+      - name: Load built image
+        run: docker load --input "$RUNNER_TEMP/fhir-etl-image/fhir-etl.tar"
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Push commit image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}"
+          docker tag fhir-etl:ci "$image"
+          docker push "$image"
+          printf 'Published image: `%s`\n' "$image" >> "$GITHUB_STEP_SUMMARY"
