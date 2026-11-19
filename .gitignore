@@ -1,4 +1,6 @@
 .env
+.venv/
+work/
 data/cache/
 __pycache__/
 *.pyc
