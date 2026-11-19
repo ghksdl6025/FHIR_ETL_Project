@@ -56,7 +56,6 @@ jobs:
         with:
           name: fhir-etl-image
           path: ${{ runner.temp }}/fhir-etl.tar
-          archive: false
           if-no-files-found: error
           retention-days: 1
 
