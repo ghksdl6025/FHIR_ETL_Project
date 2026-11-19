@@ -28,6 +28,35 @@ After startup:
 docker compose down
 ```
 
+## Tests and CI
+
+With Python 3.13 installed, run from the repository root:
+
+```text
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
+
+The unit tests cover age boundaries, pseudonymization and patient references,
+blood pressure transformations, descriptive statistics, and IQR edge cases.
+They use synthetic data, a fixed reference date, and a test-only pseudonym key.
+They do not read `.env`, call the public FHIR server, or connect to PostgreSQL.
+No additional test dependencies are required.
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs on pull requests
+and pushes to `main`. It installs dependencies, runs the unit tests on Python
+3.13, then builds the Docker image without starting the ETL or publishing it.
+With Docker running, the same build can be checked locally:
+
+```text
+docker build --tag fhir-etl:ci .
+```
+
+Database/API integration tests, deployment, and branch protection are not yet
+configured. To block merging on CI failures, add `Tests and Docker build` as a
+required status check in the repository's branch protection or ruleset after
+the first workflow run.
+
 ## Cohort and resource
 
 The data source is from https://hapi.fhir.org/baseR4
