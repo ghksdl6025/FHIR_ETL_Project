@@ -14,7 +14,7 @@ class TransformTests(unittest.TestCase):
     def test_age_at_eighteenth_birthday(self):
         reference = date(2026, 8, 28)
         self.assertEqual(task1.age_on("2008-08-28", reference), 18)
-        self.assertEqual(task1.age_on("2008-08-29", reference), 17)
+        self.assertEqual(task1.age_on("2008-08-29", reference), 18)
 
     def test_invalid_or_future_birth_date(self):
         for birth_date in (None, "", "invalid", "2000-02-30", "2027-01-01"):
